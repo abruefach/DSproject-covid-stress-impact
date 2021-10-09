@@ -151,12 +151,24 @@ covid_recode <- covid %>%
                             "About the same" = 3,
                             "Somewhat less happy now" = 2,
                             "Much less happy now" = 1,
-                            .default = NA_real_)) %>%
+                            .default = NA_real_),
+         
+         # Our first pass at making employment status into a binary variable
+         # 1 - full time or part time
+         # 0 - unemployed or not working
+         # NA - all other categories
+         employment_status.cat = case_when(employment_status %in% 
+                                             c("Full time employment", 
+                                               "Part time employment") ~ 1,
+                                           employment_status %in% 
+                                             c("Unemployed", 
+                                               "Not working") ~ 0,
+                                           TRUE ~ NA_real_)) %>%
   rowwise() %>% 
   mutate(PHQ4_sum = sum(PHQ4_1, PHQ4_2, PHQ4_3, PHQ4_4),
          child_education_sum = sum(child_education_1, child_education_2, child_education_3, child_education_4)) %>% 
   ungroup()
 
 
-write.csv(covid_recode, file = "covid19tracker_recoded", row.names = FALSE)
+write.csv(covid_recode, file = "covid19tracker_recoded.csv", row.names = FALSE)
 
