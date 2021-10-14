@@ -61,7 +61,7 @@ recode_child_ed <- function(x) {
 
 
 #### Recode columns ####
-covid_recode <- covid %>% 
+covid_recode <- covid_sub %>% 
          # For household variables, note that 8 or more and 5 or more are coded
          # as 8 and 5 respectively. So need to be careful with interpreting
          # these values.
