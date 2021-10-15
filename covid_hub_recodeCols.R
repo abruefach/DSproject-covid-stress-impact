@@ -137,10 +137,10 @@ covid_recode <- covid_sub %>%
          # Change all the PHQ4 (well-being) questions to a numeric scale
          # Higher scores indicate more severe anxiety/depression symptoms
          across(contains("PHQ4"),
-                recode,'Not at all' = 0,
-                'Several days' = 1,
-                'More than half the days' = 2,
-                'Nearly everyday' = 3,
+                recode,'Not at all' = 1,
+                'Several days' = 2,
+                'More than half the days' = 3,
+                'Nearly everyday' = 4,
                 .default = NA_real_),
          
          # Compared with two weeks ago, would you say you are more or less happy now?
