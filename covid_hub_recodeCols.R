@@ -22,7 +22,7 @@ covid <- read.csv("united-states.csv")
 
 #### Select only our columns of interest ####
 covid_sub <- covid %>% 
-  select(state, endtime, gender, age, contains("household"), contains("child_age"),
+  select(state, endtime, qweek, gender, age, contains("household"), contains("child_age"),
          contains("child_education"), i10_health, i11_health, r1_1, WCRV_4,
          employment_status, cantril_ladder, contains("PHQ4"), CORE_B2_4, contains("w4")) 
 
@@ -163,7 +163,8 @@ covid_recode <- covid_sub %>%
                                            employment_status %in% 
                                              c("Unemployed", 
                                                "Not working") ~ 0,
-                                           TRUE ~ NA_real_)) %>%
+                                           TRUE ~ NA_real_),
+         week = as.numeric(str_remove(qweek, "week "))) %>%
   rowwise() %>% 
   mutate(PHQ4_sum = sum(PHQ4_1, PHQ4_2, PHQ4_3, PHQ4_4),
          child_education_sum = sum(child_education_1, child_education_2, child_education_3, child_education_4)) %>% 
