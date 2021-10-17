@@ -140,7 +140,7 @@ covid_recode <- covid_sub %>%
                 recode,'Not at all' = 1,
                 'Several days' = 2,
                 'More than half the days' = 3,
-                'Nearly everyday' = 4,
+                'Nearly every day' = 4,
                 .default = NA_real_),
          
          # Compared with two weeks ago, would you say you are more or less happy now?
