@@ -1,8 +1,6 @@
 import pandas as pd
 
-def us_state_to_code():
-    
-    Dict = {
+Dict_state = {
     "Alabama": "AL",
     "Alaska": "AK",
     "Arizona": "AZ",
@@ -56,14 +54,7 @@ def us_state_to_code():
     "Washington DC": "DC",
 }
     
-    return Dict
-
-def states_to_regionChr():
-    """
-    maps from state code to region
-    S: South, W:West, N:North East, M:Mid West O:other
-    """
-    Dict = {
+Dict_region_ch = {
         'AK': 'O',
         'AL': 'S',
         'AR': 'S',
@@ -122,8 +113,37 @@ def states_to_regionChr():
         'WV': 'S',
         'WY': 'W'
 }
-    return Dict
 
-def regionchr_to_regioncode():
-    return {'O':'Other', 'S':'South', 'W':'West', 'N':'North East', 'M':'Mid West'}
+Dict_regcode = {
+    'O':'Other',
+    'S':'South',
+    'W':'West',
+    'N':'North East',
+    'M':'Mid West'
+}
+
+def us_state_to_code(key):
+    """
+    Key - string, state name
+    """
+    return Dict_state[key]
+
+def states_to_regionChr(key):
+    """
+    maps from state code to region
+    S: South, W:West, N:North East, M:Mid West O:other
+    """
+    return Dict_region_ch[key]
+
+def regionchr_to_regioncode(key):
+    """Key - string, region to code
+    """
+    return Dict_regcode[key]
+
+def us_state_to_regioncode(key):
+    """
+    All of the previous functions chainged together in one line
+    """
+    return regionchr_to_regioncode(states_to_regionChr(us_state_to_code(key)))
+
 
