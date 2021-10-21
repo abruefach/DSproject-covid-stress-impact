@@ -536,3 +536,9 @@ export_summs(mod_women, mod_men, error_format = "[{conf.low}, {conf.high}]", err
 
 ```
 
+
+
+Next up, only do March-June of 2020. And maybe also FAll 2020? Like during the election, etc.?
+
+
+
