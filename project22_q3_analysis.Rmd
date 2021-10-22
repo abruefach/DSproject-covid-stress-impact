@@ -1,0 +1,544 @@
+---
+title: "Stress, employment, and family life in Covid-19"
+author: "Elena Leib"
+date: "10/14/2021"
+output:
+  html_document: default
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(stringsAsFactors = FALSE)
+
+#### Load libraries ####
+library(tidyverse)
+library(jtools)
+library(ggbeeswarm)
+# library(tidylog)
+
+
+#### Read in data ####
+covid_recode <- read.csv("covid19tracker_recoded.csv")
+
+```
+
+```{r prepData, echo=TRUE}
+
+# To prep the data, we want to select our variables of interest:
+# household_children
+# Sum score of child_education_[1-4]
+# i10_health
+# i11_health
+# r1_1
+# WCRV_4
+# cantril_ladder
+# Sum score of PHQ4_[1-4]
+# CORE_B2_4
+# w4_[1-11] <-- Not including work for now!
+
+covid.q3 <- covid_recode %>%
+  select(
+    gender,
+    employment_status,
+    PHQ4_1,
+    PHQ4_2,
+    PHQ4_3,
+    PHQ4_4,
+    PHQ4_sum,
+    household_children,
+    # child_education_sum, # Sadly, there are 11057 NAs....
+    i10_health,
+    i11_health,
+    # r1_1, # 3432 NAs
+    # WCRV_4, # 7124 NAs
+    cantril_ladder,
+    # CORE_B2_4, # 7574 NAs
+    state,
+    age,
+    qweek
+  ) %>%
+  filter(household_children > 0)
+
+
+covid.q3_noNA <- covid.q3 %>% drop_na()
+
+```
+
+
+```{r}
+
+df.violins <- covid.q3_noNA %>% 
+  filter(employment_status %in% c("Full time employment", "Part time employment",
+                                  "Unemployed", "Not working")) %>% 
+  mutate(employment_status = factor(employment_status, levels = 
+                                      c("Full time employment", "Part time employment",
+                                  "Unemployed", "Not working"))) # %>% 
+  # recode(employment_status, "Full time employment" = "full-time",
+  #        "Part time employment" = "part-time",
+  #        "Unemployed" = "unemployed",
+  #        "Not working" = "not working")
+
+ggplot(df.violins, aes(x = employment_status, y = PHQ4_sum, fill = employment_status)) +
+  facet_wrap(~gender) +
+  geom_violin(trim = FALSE) +
+  # geom_quasirandom(width=.3, alpha=.2) +
+  # geom_beeswarm() +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle = 45, hjust = 1))
+
+
+ggplot(df.violins, aes(x = household_children, y = PHQ4_sum, color=gender)) +
+  facet_wrap(~employment_status) +
+  geom_jitter() +
+  geom_smooth(method = "lm") +
+  # geom_quasirandom(width=.3, alpha=.2) +
+  # geom_beeswarm() +
+  theme_bw()
+
+
+```
+
+```{r, fig.width=10}
+
+ggplot(df.violins, aes(x = household_children, y = PHQ4_sum, 
+                       color=interaction(gender, employment_status))) +
+  # facet_wrap(~employment_status) +
+  geom_jitter() +
+  geom_smooth(method = "lm", se = FALSE) +
+  # geom_quasirandom(width=.3, alpha=.2) +
+  # geom_beeswarm() +
+  theme_bw()
+
+```
+
+
+
+```{r, include=FALSE}
+
+# Make correlation plots
+# Adapted from Katherine Hoffman at KHStats (https://www.khstats.com/blog/corr-plots/corr-plots/)
+# by Elena Leib
+
+# This function calculates the correlation using rcorr, and then formats a data
+# frame for each of the three elements (r, n, and P), and returns a list of 3
+# data frames
+
+cors <- function(df) {
+  M <- Hmisc::rcorr(as.matrix(df))
+  # turn all three matrices (r, n, and P into a data frame)
+  Mdf <- map(M, ~data.frame(.x))
+  # return the three data frames in a list
+  return(Mdf)
+}
+
+
+# Now we need to prep the correlations df for plotting with ggplot2
+formatted_cors <- function(df, factorOrder) {
+  # Arguments:
+  #   df - a data frame that is ready to be correlated. This means that it has
+  #        only columns you want in the correlation table AND all of the NAs
+  #        have been removed! If there are any NAs in cells, it will give you
+  #        errors
+  #   factorOrder - a string vector of the variables in the order you need them
+  #                 to be so that the variables are in the correct order in the
+  #                 corrPlot. This order might take some trial and error.
+  
+  # Start by correlating the data
+  x <- cors(df) %>% 
+    # Move row names to their own column
+    # Use map from purr to keep data in list format
+    map(~rownames_to_column(.x, var="measure1")) %>% 
+    # Move columns into single column named measure2 (make long)
+    map(~pivot_longer(.x, -measure1, "measure2")) %>% 
+    # Merge three list elements using bind_rows() (unlist them)
+    bind_rows(.id = "id") %>% 
+    # Make r, n, and P their own columns
+    pivot_wider(names_from = id, values_from = value) %>% 
+    # Change so everything is lower case
+    rename(p = P) %>% 
+    # Add a few more columns that will be useful later for making the plots more informative
+           # Make a new column with the rounded r value, and keep trailing 0s so
+           # all values have 2 decimal digits
+    mutate(r_text = formatC(round(r, 2), format='f', digits=2),
+           # Remove 0 before decimal point
+           r_text = sub('^(-)?0[.]', '\\1.', r_text),
+           # Make a new column that has significance stars
+           sig_text = case_when(r == 1 ~ NA_character_,
+                                p < .0001 ~ "****",
+                                p < .001 ~ "***",
+                                p < .01 ~ "**",
+                                p < .05 ~ "*",
+                                TRUE ~ ""),
+           # Make a new column with text that will be shown in boxes
+           box_text = paste0(r_text, sig_text),
+           # Order the variables
+           measure1 = factor(measure1, levels = factorOrder, ordered = TRUE),
+           measure2 = factor(measure2,levels = factorOrder, ordered = TRUE))
+  
+  
+}
+
+# Same as formatted_cors, but removes lower right triangle
+# I'm pretty sure you could adapt this code here to remove any of the corners.
+formatted_cors_rmLower <- function(df, factorOrder) {
+  # Arguments:
+  #   df - a data frame that is ready to be correlated. This means that it has
+  #        only columns you want in the correlation table AND all of the NAs
+  #        have been removed! If there are any NAs in cells, it will give you
+  #        errors
+  #   factorOrder - a string vector of the variables in the order you need them
+  #                 to be so that the variables are in the correct order in the
+  #                 corrPlot. This order might take some trial and error.
+  
+  # Start by correlating the data
+  cors(df) %>% 
+    # Move row names to their own column
+    # Use map from purr to keep data in list format
+    map(~rownames_to_column(.x, var="measure1")) %>% 
+    # Move columns into single column named measure2 (make long)
+    map(~pivot_longer(.x, -measure1, "measure2")) %>% 
+    # Merge three list elements using bind_rows() (unlist them)
+    bind_rows(.id = "id") %>% 
+    # Make r, n, and P their own columns
+    pivot_wider(names_from = id, values_from = value) %>% 
+    # Change so everything is lower case
+    rename(p = P) %>% 
+    # Add a few more columns that will be useful later for making the plots more informative
+           # Make a new column with the rounded r value, and keep trailing 0s so
+           # all values have 2 decimal digits
+    mutate(r_text = formatC(round(r, 2), format='f', digits=2),
+           # Remove 0 before decimal point
+           r_text = sub('^(-)?0[.]', '\\1.', r_text),
+           # Make a new column that has significance stars
+           sig_text = case_when(r == 1 ~ NA_character_,
+                                p < .0001 ~ "****",
+                                p < .001 ~ "***",
+                                p < .01 ~ "**",
+                                p < .05 ~ "*",
+                                TRUE ~ ""),
+           # Make a new column with text that will be shown in boxes
+           box_text = paste0(r_text, sig_text),
+           # Order the variables
+           measure1 = factor(measure1, levels = factorOrder, ordered = TRUE),
+           measure2 = factor(measure2,levels = factorOrder, ordered = TRUE)) %>% 
+    # For visual inspection purposes only
+    relocate(measure2) %>%
+    # Get rid of rows representing diagonals
+    drop_na() %>% 
+    # Make key to identify duplicate rows
+    mutate(key= paste(pmax(measure1, measure2), pmin(measure1, measure2))) %>% 
+    # Arrange to get order we want (want to keep top left of box, so higher
+    # measure2 (y) values)
+    arrange(key, desc(measure2), measure1) %>%  
+    group_by(key) %>% 
+    # Remove second instance of each duplicate (tiles in bottom right of box)
+    filter(row_number() == 1) %>% 
+    ungroup() %>% 
+    select(-key) %>% 
+    # For visual inspection purposes, check work
+    arrange(desc(measure2), measure1) %>% 
+    # Drop unused factor levels so they won't be represented in plot
+    droplevels() 
+  
+}
+
+
+# Make correlation plot
+makeCorrPlot <- function(df, title, showLeg, customLabels, xaxisLabs = NA, yaxisLabs = NA, n) {
+  # Arguments:
+  #   df - a df that has already been formatted for corr plots (i.e., passed
+  #        through either formatted_cors or formatted_cors_rmLower.)
+  #   title - title of the plot
+  #   showLeg - boolean, TRUE to show legend on corr plot
+  #   customLabels - boolean, TRUE when you give custom labels for your axes
+  #   xaxisLabs - string vector of labels for the x-axis variables
+  #   yaxisLabs - string vector of labels for the y-axis variables
+  
+  
+  # Notes:
+  #   - You may want to change the limits argument in scale_fill_gradient2,
+  #     depending on your max and min correlations.
+  #
+  #   - You can also change customize whether the x-axis is at the top or the
+  #     bottom
+  
+
+  g <- ggplot(df, aes(x = measure1, y = measure2, fill = r, label = box_text)) + 
+    geom_tile(color = "white", show.legend = showLeg) +
+    labs(x = NULL, y = NULL, fill = "Pearson's\nCorrelation", title=paste0(title, " (n = ", n, ")")) +
+    # Map a green, white and red color scale to correspond to sequential gradient
+    # Used -.5 to .5 because no corr outside that range, gives better contrast
+    # This is something that can be customized!
+    scale_fill_gradient2(mid="#ffffff",low="#8b0000",high="#4F6228", limits=c(-.6,.6)) +
+    # Adds labels inside boxes
+    geom_text(size = 4) +
+    # Change this to whatever theme you would like
+    # You may need to change the font sizes, center the title, etc., to make the
+    # plot look nice
+    theme_classic() +
+    # change axis text size
+    theme(axis.text = element_text(size = rel(.9)),
+          plot.title = element_text(hjust = 0.5)) +
+    # make aspect ratio so tiles are all square!
+    coord_fixed()
+  
+  if(customLabels) {
+    g <- g +
+      # remove excess space on x and y axes, assign axis labels, and move x-axis to top
+      scale_x_discrete(expand = c(0, 0),
+                       labels = xaxisLabs,
+                       position = "top") +
+      scale_y_discrete(expand = c(0, 0), labels = yaxisLabs)
+  } else {
+    g <- g +
+      # remove excess space on x and y axes, assign axis labels, and move x-axis to top
+      scale_x_discrete(expand = c(0, 0),
+                       position = "top") +
+      scale_y_discrete(expand = c(0, 0))
+  }
+  
+  
+  return(g)
+  
+}
+
+
+# Decipher what order the variables will appear on the plot:
+# - Along the x-axis, variables will appear in their factor order from left to
+#   right, with the last variable missing at the end
+# - Along the y-axis, variables will appear in their factor order from *bottom
+#   to top* (0,0 is at the bottom left!), starting with the *second* variable.
+#   * Another way of saying this is that the variables appear in *reverse*
+#     factor order starting from the top and going down, with the first variable
+#     in the factor order missing at the bottom.
+
+# You need to select your factorOrder carefully in have your variables in the
+# order that you want them to be displayed.
+
+# Make factor order, and corresponding labels that I will want to use
+# I want my predictors to be in the order we added them along the x-axis
+
+factorOrder <- c("PHQ4_sum", "i10_health", "i11_health", "age", "cantril_ladder", "household_children")
+factorLabels <- c("PHQ4_sum", "i10_health", "i11_health", "age", "cantril_ladder", "children")
+
+# This code sets the labels on the corrplot so they are pretty and readable!
+# Need to make these axis labels in the order based on how you see it in the
+# corr plot.
+
+# For the x-axis: labels map to order of factors, remove last one on the list
+# (in this case, first 4 of 5, remove Frac1_Accuracy)
+xaxisLabs <- factorLabels[1:length(factorLabels)-1]
+
+# For the y-axis: labels map to order of factors, remove first one on the list,
+# then go in order
+# This will correspond to going from the bottom of the y-axis up because 0,0 is
+# at the bottom left! (in this case, remove first, Frac1_RT, and keep the
+# remaining 4)
+yaxisLabs <- factorLabels[2:length(factorLabels)]
+
+```
+
+
+```{r makeCorrData, include = FALSE}
+
+covid_corrData <- covid.q3_noNA %>% 
+  select(gender,
+    employment_status,
+    PHQ4_sum,
+    household_children,
+    i10_health,
+    i11_health,
+    cantril_ladder,
+    age)
+
+
+covid_corrData_m <- covid_corrData %>% 
+  filter(gender == "Male") %>% 
+  select(-gender, -employment_status)
+
+covid_corrData_f <- covid_corrData %>% 
+  filter(gender == "Female") %>% 
+  select(-gender, -employment_status)
+
+
+covid_corrData_m.f <- covid_corrData %>% 
+  filter(gender == "Male", employment_status == "Full time employment") %>% 
+  select(-gender, -employment_status)
+
+covid_corrData_m.p <- covid_corrData %>% 
+  filter(gender == "Male", employment_status == "Part time employment") %>% 
+  select(-gender, -employment_status)
+
+covid_corrData_m.u <- covid_corrData %>% 
+  filter(gender == "Male", employment_status == "Unemployed") %>% 
+  select(-gender, -employment_status)
+
+covid_corrData_m.n <- covid_corrData %>% 
+  filter(gender == "Male", employment_status == "Not working") %>% 
+  select(-gender, -employment_status)
+
+covid_corrData_f.f <- covid_corrData %>% 
+  filter(gender == "Female", employment_status == "Full time employment") %>% 
+  select(-gender, -employment_status)
+
+covid_corrData_f.p <- covid_corrData %>% 
+  filter(gender == "Female", employment_status == "Part time employment") %>% 
+  select(-gender, -employment_status)
+
+covid_corrData_f.u <- covid_corrData %>% 
+  filter(gender == "Female", employment_status == "Unemployed") %>% 
+  select(-gender, -employment_status)
+
+covid_corrData_f.n <- covid_corrData %>% 
+  filter(gender == "Female", employment_status == "Not working") %>% 
+  select(-gender, -employment_status)
+
+
+
+```
+
+Dataset: All participants that have at least 1 child in their household under the age of 18, and valid data for all of our measures of interest
+
+#### Across all employment statuses
+
+```{r, fig.height=5, fig.width=5}
+
+# Now it is time to run the code and make the corrplots!
+# Call the makeCorrPlot function on the formatted for cor data. I chose to do
+# that all in one step here.
+
+# All males
+makeCorrPlot(formatted_cors_rmLower(covid_corrData_m, factorOrder), "All Males", showLeg = FALSE, customLabels = TRUE, xaxisLabs, yaxisLabs, n = nrow(covid_corrData_m))
+
+# All females
+makeCorrPlot(formatted_cors_rmLower(covid_corrData_f, factorOrder), "All Females", showLeg = FALSE, customLabels = TRUE, xaxisLabs, yaxisLabs, n = nrow(covid_corrData_f))
+
+
+```
+
+
+#### Full-time
+
+```{r, fig.height=5, fig.width=5}
+
+
+# All males
+makeCorrPlot(formatted_cors_rmLower(covid_corrData_m.f, factorOrder), "Males", showLeg = FALSE, customLabels = TRUE, xaxisLabs, yaxisLabs, n = nrow(covid_corrData_m.f))
+
+# All females
+makeCorrPlot(formatted_cors_rmLower(covid_corrData_f.f, factorOrder), "Females", showLeg = FALSE, customLabels = TRUE, xaxisLabs, yaxisLabs, n = nrow(covid_corrData_f.f))
+```
+
+#### Part-time
+
+```{r, fig.height=5, fig.width=5}
+
+# All males
+makeCorrPlot(formatted_cors_rmLower(covid_corrData_m.p, factorOrder), "Males", showLeg = FALSE, customLabels = TRUE, xaxisLabs, yaxisLabs, n = nrow(covid_corrData_m.p))
+
+# All females
+makeCorrPlot(formatted_cors_rmLower(covid_corrData_f.p, factorOrder), "Females", showLeg = FALSE, customLabels = TRUE, xaxisLabs, yaxisLabs, n = nrow(covid_corrData_f.p))
+
+```
+
+#### Unemployed
+
+```{r, fig.height=5, fig.width=5}
+
+# All males
+makeCorrPlot(formatted_cors_rmLower(covid_corrData_m.u, factorOrder), "Males", showLeg = FALSE, customLabels = TRUE, xaxisLabs, yaxisLabs, n = nrow(covid_corrData_m.u))
+
+# All females
+makeCorrPlot(formatted_cors_rmLower(covid_corrData_f.u, factorOrder), "Females", showLeg = FALSE, customLabels = TRUE, xaxisLabs, yaxisLabs, n = nrow(covid_corrData_f.u))
+
+```
+
+#### Not working
+
+```{r, fig.height=5, fig.width=5}
+
+# All males
+makeCorrPlot(formatted_cors_rmLower(covid_corrData_m.n, factorOrder), "Males", showLeg = FALSE, customLabels = TRUE, xaxisLabs, yaxisLabs, n = nrow(covid_corrData_m.n))
+
+# All females
+makeCorrPlot(formatted_cors_rmLower(covid_corrData_f.n, factorOrder), "Females", showLeg = FALSE, customLabels = TRUE, xaxisLabs, yaxisLabs, n = nrow(covid_corrData_f.n))
+
+```
+
+
+#### Look at relation between cantril_ladder and PHQ4_sum
+```{r}
+
+ggplot(covid.q3_noNA, aes(x = PHQ4_sum, y = cantril_ladder, color = gender)) +
+  geom_jitter() +
+  geom_smooth(method = "lm") +
+  theme_bw()
+
+
+```
+
+
+#### Run our model of interest
+Use all data, don't filter >1 dependent... include everyone!
+
+
+```{r}
+
+df.forAnalysis <- covid_recode %>% 
+  filter(employment_status %in% c("Full time employment", "Part time employment",
+                                  "Unemployed", "Not working")) %>% 
+  mutate(employment_status = factor(employment_status, levels = 
+                                      c("Full time employment", "Part time employment",
+                                  "Unemployed", "Not working")))
+
+
+  
+mod <- lm(PHQ4_sum ~ household_children*gender*employment_status + age + week, data = df.forAnalysis)
+
+paste("Our sample size for this analysis:", length(mod$fitted.values), "participants")
+
+export_summs(mod, error_format = "[{conf.low}, {conf.high}]", error_pos = "same", results = "asis")
+
+```
+
+Findings:  
+- No main effect of # of children on PHQ4 for the full-time group for women  
+- Main effect of gender (Males lower on PHQ4)  
+- Main effect of employment status: Part-time, Unemployed, and Not Working all have greater PHQ4 than Full-time  
+- Main effect of age: small but robust effect, where the older you are, the less stressed you are.  
+- No linear effect of week... buuuutttt it's probably not a linear effect anyway, so would need to model this differently  
+\newline
+- Interaction between # of children and employment status not working for women: Negative relation between # of children and PHQ4 for not working group (more children, less stress/anxiety for this group... curious!)  
+- Interaction between genderMale and Not working --> Men who are not working are MORE stressed/anxious than women who are not working!  
+\newline
+- NO 3-way interactions  
+\newline
+(Need to check all these interpretations!)
+\newline
+\newline
+Pretty confusing to interpret because of 3-way interaction, so going to run going to run the model separately for male and female to check.
+
+
+
+```{r}
+
+  
+mod_women <- lm(PHQ4_sum ~ household_children*employment_status + age + week, data = filter(df.forAnalysis, gender == "Female"))
+mod_men <- lm(PHQ4_sum ~ household_children*employment_status + age + week, data = filter(df.forAnalysis, gender == "Male"))
+
+paste("Number of women:", length(mod_women$fitted.values), "and number of men:", length(mod_men$fitted.values))
+
+export_summs(mod_women, mod_men, error_format = "[{conf.low}, {conf.high}]", error_pos = "same", results = "asis")
+
+
+```
+
+
+
+Next up, only do March-June of 2020. And maybe also FAll 2020? Like during the election, etc.?
+
+
+

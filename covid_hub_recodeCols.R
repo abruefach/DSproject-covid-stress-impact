@@ -22,7 +22,7 @@ covid <- read.csv("united-states.csv")
 
 #### Select only our columns of interest ####
 covid_sub <- covid %>% 
-  select(state, endtime, gender, age, contains("household"), contains("child_age"),
+  select(state, endtime, qweek, gender, age, contains("household"), contains("child_age"),
          contains("child_education"), i10_health, i11_health, r1_1, WCRV_4,
          employment_status, cantril_ladder, contains("PHQ4"), CORE_B2_4, contains("w4")) 
 
@@ -61,7 +61,7 @@ recode_child_ed <- function(x) {
 
 
 #### Recode columns ####
-covid_recode <- covid %>% 
+covid_recode <- covid_sub %>% 
          # For household variables, note that 8 or more and 5 or more are coded
          # as 8 and 5 respectively. So need to be careful with interpreting
          # these values.
@@ -137,10 +137,10 @@ covid_recode <- covid %>%
          # Change all the PHQ4 (well-being) questions to a numeric scale
          # Higher scores indicate more severe anxiety/depression symptoms
          across(contains("PHQ4"),
-                recode,'Not at all' = 0,
-                'Several days' = 1,
-                'More than half the days' = 2,
-                'Nearly everyday' = 3,
+                recode,'Not at all' = 1,
+                'Several days' = 2,
+                'More than half the days' = 3,
+                'Nearly every day' = 4,
                 .default = NA_real_),
          
          # Compared with two weeks ago, would you say you are more or less happy now?
@@ -163,7 +163,8 @@ covid_recode <- covid %>%
                                            employment_status %in% 
                                              c("Unemployed", 
                                                "Not working") ~ 0,
-                                           TRUE ~ NA_real_)) %>%
+                                           TRUE ~ NA_real_),
+         week = as.numeric(str_remove(qweek, "week "))) %>%
   rowwise() %>% 
   mutate(PHQ4_sum = sum(PHQ4_1, PHQ4_2, PHQ4_3, PHQ4_4),
          child_education_sum = sum(child_education_1, child_education_2, child_education_3, child_education_4)) %>% 
